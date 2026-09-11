@@ -1,6 +1,7 @@
-import { NodeFileProvider } from '../../filemanagement/FileProvider';
 import os from 'os';
 import path from 'path';
+
+import { NodeFileProvider } from '../../filemanagement/FileProvider';
 
 describe('FileProvider', () => {
   it('NodeFileProvider round-trips data', async () => {
