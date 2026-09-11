@@ -13,10 +13,12 @@ export interface CrashReporter {
  */
 export class ConsoleCrashReporter implements CrashReporter {
   reportCrash(message: string, metadata: Record<string, string> = {}): void {
+    // eslint-disable-next-line no-console
     console.error('[CrashReporter] CRASH:', message, metadata);
   }
 
   recordError(error: Error, metadata: Record<string, string> = {}): void {
+    // eslint-disable-next-line no-console
     console.error('[CrashReporter] ERROR:', error.message, metadata);
   }
 }

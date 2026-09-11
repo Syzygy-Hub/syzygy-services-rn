@@ -30,8 +30,8 @@ export class NativeWebSocketProvider implements WebSocketProvider {
   async connect(url: string): Promise<void> {
     this.ws = new WebSocket(url);
     await new Promise<void>((resolve, reject) => {
-      this.ws!.onopen = () => resolve();
-      this.ws!.onerror = (e) => reject(e);
+      this.ws!.onopen = (): void => resolve();
+      this.ws!.onerror = (e): void => reject(e);
     });
   }
 
@@ -42,8 +42,8 @@ export class NativeWebSocketProvider implements WebSocketProvider {
 
   async receive(): Promise<string> {
     if (!this.ws) throw WebSocketError.notConnected();
-    return new Promise((resolve) => {
-      this.ws!.onmessage = (e) => resolve(e.data as string);
+    return new Promise<string>((resolve) => {
+      this.ws!.onmessage = (e): void => resolve(e.data as string);
     });
   }
 

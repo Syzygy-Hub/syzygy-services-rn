@@ -11,6 +11,7 @@ export interface AnalyticsProvider {
  */
 export class ConsoleAnalyticsProvider implements AnalyticsProvider {
   track(name: string, properties: Record<string, string> = {}): void {
+    // eslint-disable-next-line no-console
     console.log('[Analytics]', name, properties);
   }
 }
