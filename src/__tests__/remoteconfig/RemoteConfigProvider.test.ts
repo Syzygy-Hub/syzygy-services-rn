@@ -74,6 +74,7 @@ describe('InMemoryRemoteConfigProvider', () => {
 
 function makeNetworkClient(responseBody: Record<string, unknown>): NetworkClientProtocol {
   return {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     execute: async (_req: NetworkRequest): Promise<NetworkResponse> => {
       const data = new TextEncoder().encode(JSON.stringify(responseBody));
       return {

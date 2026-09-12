@@ -258,6 +258,7 @@ export class InMemoryWebSocketProvider implements WebSocketProvider {
   /**
    * Immediately transitions to `'connected'`.
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async connect(_url: string): Promise<void> {
     this._setState('connecting');
     this._setState('connected');
