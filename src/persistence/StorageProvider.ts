@@ -1,31 +1,54 @@
-/**
- * Defines the contract for key-value persistence storage.
- */
-export interface StorageProvider {
-  /** Stores `value` for the given `key`. */
-  set(key: string, value: string): Promise<void>;
-  /** Retrieves the value for the given `key`, or null if not set. */
-  get(key: string): Promise<string | null>;
-  /** Removes the value for the given `key`. */
-  remove(key: string): Promise<void>;
-}
+import type { StorageKey, StorageProvider } from 'syzygy-foundation-rn';
 
 /**
- * A {@link StorageProvider} backed by an in-memory map.
- * Replace with AsyncStorage in a real React Native app.
+ * In-memory implementation of {@link StorageProvider}.
+ *
+ * Stores values serialised as JSON strings in a {@link Map}.  This is suitable
+ * for unit tests and environments where a native AsyncStorage bridge is
+ * unavailable.  In a real React Native app, swap this with an adapter around
+ * `@react-native-async-storage/async-storage`.
+ *
+ * Non-sensitive and sensitive keys share the same backing store; callers that
+ * need to distinguish them should use a key-naming convention (e.g. a
+ * `secure.` prefix) and layer encryption on top.
  */
 export class InMemoryStorageProvider implements StorageProvider {
-  private store = new Map<string, string>();
+  private readonly store = new Map<string, string>();
 
-  async set(key: string, value: string): Promise<void> {
-    this.store.set(key, value);
+  /**
+   * Retrieves the value stored under `key`.
+   * Returns the key's `defaultValue` (or `undefined`) when the key is absent.
+   *
+   * @typeParam T  The expected value type.
+   */
+  async get<T>(key: StorageKey<T>): Promise<T | undefined> {
+    const raw = this.store.get(key.identifier);
+    if (raw === undefined) return key.defaultValue;
+    return JSON.parse(raw) as T;
   }
 
-  async get(key: string): Promise<string | null> {
-    return this.store.get(key) ?? null;
+  /**
+   * Serialises `value` as JSON and persists it under `key`.
+   *
+   * @typeParam T  The value type.
+   */
+  async set<T>(value: T, key: StorageKey<T>): Promise<void> {
+    this.store.set(key.identifier, JSON.stringify(value));
   }
 
-  async remove(key: string): Promise<void> {
-    this.store.delete(key);
+  /**
+   * Removes the entry for `key`.  A no-op when the key is not present.
+   *
+   * @typeParam T  The value type (used only for type-safe key matching).
+   */
+  async remove<T>(key: StorageKey<T>): Promise<void> {
+    this.store.delete(key.identifier);
+  }
+
+  /**
+   * Removes **all** entries from the store.
+   */
+  async clear(): Promise<void> {
+    this.store.clear();
   }
 }
