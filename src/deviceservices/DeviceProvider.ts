@@ -54,7 +54,7 @@ export interface DeviceProvider {
 // NodeDeviceProvider
 // ---------------------------------------------------------------------------
 
-const DEVICE_ID_KEY = createStorageKey<string>('syzygy.device.id');
+const DEVICE_ID_KEY = createStorageKey<string>('syzygy.device.uuid');
 
 /** Options for {@link NodeDeviceProvider}. */
 export interface NodeDeviceProviderOptions {

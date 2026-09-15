@@ -9,6 +9,18 @@ export interface CrashUserContext {
 }
 
 /**
+ * A single breadcrumb entry left before a crash.
+ */
+export interface Breadcrumb {
+  /** Human-readable description of the event. */
+  readonly message: string;
+  /** Arbitrary metadata attached to this breadcrumb. */
+  readonly metadata: Record<string, string>;
+  /** Unix timestamp (ms) when the breadcrumb was recorded. */
+  readonly timestamp: number;
+}
+
+/**
  * Contract for crash and non-fatal error reporting.
  */
 export interface CrashReporter {
@@ -41,6 +53,20 @@ export interface CrashReporter {
    * crash and error reports.
    */
   setMetadata(key: string, value: string): void;
+
+  /**
+   * Leaves a breadcrumb that is captured in subsequent crash reports.
+   * Only the last 20 breadcrumbs are retained (circular buffer).
+   *
+   * @param message   Human-readable event description.
+   * @param metadata  Optional key-value context for this breadcrumb.
+   */
+  leaveBreadcrumb(message: string, metadata?: Record<string, string>): void;
+
+  /**
+   * Removes all stored breadcrumbs.
+   */
+  clearBreadcrumbs(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +134,15 @@ export class ConsoleCrashReporter implements CrashReporter {
   get userContext(): CrashUserContext | undefined {
     return this._userContext;
   }
+
+  leaveBreadcrumb(message: string, metadata: Record<string, string> = {}): void {
+    // eslint-disable-next-line no-console
+    console.error('[CrashReporter] BREADCRUMB:', message, metadata);
+  }
+
+  clearBreadcrumbs(): void {
+    // No-op for console reporter; breadcrumbs are not buffered
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +154,8 @@ export interface CrashRecord {
   readonly kind: 'crash';
   readonly message: string;
   readonly metadata: Record<string, string>;
+  /** Breadcrumbs captured at the time of the crash (snapshot of the circular buffer). */
+  readonly breadcrumbs: readonly Breadcrumb[];
 }
 
 /** A recorded non-fatal error event. */
@@ -140,9 +177,16 @@ export class InMemoryCrashReporter implements CrashReporter {
 
   private _userContext: CrashUserContext | undefined;
   private readonly _metadata: Record<string, string> = {};
+  private _breadcrumbs: Breadcrumb[] = [];
+  private static readonly MAX_BREADCRUMBS = 20;
 
   reportCrash(message: string, metadata: Record<string, string> = {}): void {
-    this.crashes.push({ kind: 'crash', message, metadata: { ...this._metadata, ...metadata } });
+    this.crashes.push({
+      kind: 'crash',
+      message,
+      metadata: { ...this._metadata, ...metadata },
+      breadcrumbs: [...this._breadcrumbs],
+    });
   }
 
   recordError(error: Error, metadata: Record<string, string> = {}): void {
@@ -155,6 +199,22 @@ export class InMemoryCrashReporter implements CrashReporter {
 
   setMetadata(key: string, value: string): void {
     this._metadata[key] = value;
+  }
+
+  leaveBreadcrumb(message: string, metadata: Record<string, string> = {}): void {
+    if (this._breadcrumbs.length >= InMemoryCrashReporter.MAX_BREADCRUMBS) {
+      this._breadcrumbs.shift();
+    }
+    this._breadcrumbs.push({ message, metadata, timestamp: Date.now() });
+  }
+
+  clearBreadcrumbs(): void {
+    this._breadcrumbs = [];
+  }
+
+  /** Returns a snapshot of the current breadcrumb buffer (oldest first). */
+  get breadcrumbs(): readonly Breadcrumb[] {
+    return [...this._breadcrumbs];
   }
 
   get userContext(): CrashUserContext | undefined {

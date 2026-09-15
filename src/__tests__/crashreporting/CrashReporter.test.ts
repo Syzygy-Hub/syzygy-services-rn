@@ -57,6 +57,48 @@ describe('InMemoryCrashReporter', () => {
     reporter.recordError(new Error('oops'));
     expect(reporter.errors[0].metadata.env).toBe('staging');
   });
+
+  it('leaveBreadcrumb stores a breadcrumb', () => {
+    const reporter = new InMemoryCrashReporter();
+    reporter.leaveBreadcrumb('user tapped button', { screen: 'Home' });
+    expect(reporter.breadcrumbs).toHaveLength(1);
+    expect(reporter.breadcrumbs[0].message).toBe('user tapped button');
+    expect(reporter.breadcrumbs[0].metadata.screen).toBe('Home');
+  });
+
+  it('breadcrumbs are included in crash reports', () => {
+    const reporter = new InMemoryCrashReporter();
+    reporter.leaveBreadcrumb('step 1');
+    reporter.leaveBreadcrumb('step 2');
+    reporter.reportCrash('boom');
+    expect(reporter.crashes[0].breadcrumbs).toHaveLength(2);
+    expect(reporter.crashes[0].breadcrumbs[0].message).toBe('step 1');
+    expect(reporter.crashes[0].breadcrumbs[1].message).toBe('step 2');
+  });
+
+  it('clearBreadcrumbs removes all breadcrumbs', () => {
+    const reporter = new InMemoryCrashReporter();
+    reporter.leaveBreadcrumb('a');
+    reporter.leaveBreadcrumb('b');
+    reporter.clearBreadcrumbs();
+    expect(reporter.breadcrumbs).toHaveLength(0);
+  });
+
+  it('circular buffer retains only the last 20 breadcrumbs', () => {
+    const reporter = new InMemoryCrashReporter();
+    for (let i = 1; i <= 25; i++) {
+      reporter.leaveBreadcrumb(`crumb-${i}`);
+    }
+    expect(reporter.breadcrumbs).toHaveLength(20);
+    expect(reporter.breadcrumbs[0].message).toBe('crumb-6');
+    expect(reporter.breadcrumbs[19].message).toBe('crumb-25');
+  });
+
+  it('crash report includes empty breadcrumbs when none left', () => {
+    const reporter = new InMemoryCrashReporter();
+    reporter.reportCrash('no crumbs');
+    expect(reporter.crashes[0].breadcrumbs).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -55,6 +55,25 @@ describe('InMemoryAnalyticsProvider', () => {
     expect(provider.userProperties).toEqual({});
     expect(provider.sessionId).not.toBe(oldSession);
   });
+
+  it('sessionId is present in every tracked event', () => {
+    const provider = new InMemoryAnalyticsProvider();
+    const event = createAnalyticsEvent('button_click', { label: 'ok' });
+    provider.track(event);
+    expect(provider.events[0].properties.sessionId).toBe(provider.sessionId);
+  });
+
+  it('sessionId in events changes after reset()', () => {
+    const provider = new InMemoryAnalyticsProvider();
+    provider.track(createAnalyticsEvent('before_reset'));
+    const idBefore = provider.events[0].properties.sessionId as string;
+    provider.reset();
+    provider.track(createAnalyticsEvent('after_reset'));
+    const idAfter = provider.events[1].properties.sessionId as string;
+    expect(idBefore).toBeTruthy();
+    expect(idAfter).toBeTruthy();
+    expect(idAfter).not.toBe(idBefore);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -72,14 +91,14 @@ describe('ConsoleAnalyticsProvider', () => {
     consoleSpy.mockRestore();
   });
 
-  it('track emits to console.log', () => {
+  it('track emits to console.log with sessionId in properties', () => {
     const provider = new ConsoleAnalyticsProvider();
     const event = createAnalyticsEvent('page_view');
     provider.track(event);
     expect(consoleSpy).toHaveBeenCalledWith(
       '[Analytics] track',
       'page_view',
-      {},
+      expect.objectContaining({ sessionId: provider.sessionId }),
       expect.anything(),
     );
   });

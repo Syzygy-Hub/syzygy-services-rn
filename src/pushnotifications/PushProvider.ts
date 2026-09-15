@@ -1,5 +1,41 @@
 /**
  * Payload delivered with an incoming push notification.
+ *
+ * ## Real FCM / APNs Integration
+ *
+ * ### Firebase Cloud Messaging (Android + iOS)
+ * 1. Install `@react-native-firebase/app` and `@react-native-firebase/messaging`.
+ * 2. Follow the Firebase console setup to download `google-services.json` (Android)
+ *    and `GoogleService-Info.plist` (iOS) and place them in the project roots.
+ * 3. Call `messaging().requestPermission()` instead of `InMemoryPushProvider.requestPermission()`.
+ * 4. Obtain the FCM token via `messaging().getToken()` and pass it to your backend.
+ * 5. Register foreground message handler:
+ *    ```ts
+ *    messaging().onMessage(async (remoteMessage) => {
+ *      const payload = createNotificationPayload(
+ *        remoteMessage.notification?.title ?? '',
+ *        remoteMessage.notification?.body ?? '',
+ *        remoteMessage.data ?? {},
+ *      );
+ *      pushProvider.simulateNotification(payload); // or forward to your UI
+ *    });
+ *    ```
+ * 6. For background/quit-state messages use `messaging().setBackgroundMessageHandler()`.
+ *
+ * ### Apple Push Notification service (APNs)
+ * 1. Enable the Push Notifications capability in your Xcode project (Signing & Capabilities).
+ * 2. Create an APNs Authentication Key (.p8) or APNs certificate in the Apple Developer portal.
+ * 3. Upload the key/certificate to your backend or Firebase console.
+ * 4. On the React Native side, request permissions via `@notifee/react-native` or
+ *    `react-native-permissions`, then retrieve the APNs device token:
+ *    ```ts
+ *    import { getAPNSToken } from '@react-native-firebase/messaging';
+ *    const apnsToken = await getAPNSToken();
+ *    ```
+ * 5. Exchange the APNs token for an FCM token when using Firebase as the delivery layer.
+ * 6. Handle incoming APNs notifications by implementing `UNUserNotificationCenterDelegate`
+ *    (native) or by hooking into the `messaging().onMessage` / `onNotificationOpenedApp`
+ *    callbacks (React Native / Firebase).
  */
 export interface NotificationPayload {
   /** Human-readable title displayed in the notification banner. */
@@ -8,6 +44,66 @@ export interface NotificationPayload {
   readonly body: string;
   /** Arbitrary key-value data attached by the server. */
   readonly data: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// NotificationPayload factory helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a {@link NotificationPayload} with the given fields.
+ *
+ * @param title  Notification banner title.
+ * @param body   Notification body text.
+ * @param data   Optional key-value data map.  Defaults to an empty object.
+ *
+ * @example
+ * ```ts
+ * const payload = createNotificationPayload('New message', 'You have 3 unread messages');
+ * ```
+ */
+export function createNotificationPayload(
+  title: string,
+  body: string,
+  data: Record<string, unknown> = {},
+): NotificationPayload {
+  return { title, body, data };
+}
+
+/**
+ * Creates a {@link NotificationPayload} representing a simple alert.
+ *
+ * @param title  Alert title.
+ * @param message  Alert body.
+ */
+export function createAlertNotification(title: string, message: string): NotificationPayload {
+  return createNotificationPayload(title, message, { type: 'alert' });
+}
+
+/**
+ * Creates a {@link NotificationPayload} for a chat/message notification.
+ *
+ * @param senderName  Display name of the sender.
+ * @param preview     Text preview of the message.
+ * @param threadId    Conversation or thread identifier for deep-linking.
+ */
+export function createMessageNotification(
+  senderName: string,
+  preview: string,
+  threadId: string,
+): NotificationPayload {
+  return createNotificationPayload(senderName, preview, { type: 'message', threadId });
+}
+
+/**
+ * Creates a {@link NotificationPayload} for a data-only (silent) push.
+ * Silent pushes carry no visible UI — the app wakes in the background to
+ * process the payload.
+ *
+ * @param data  Arbitrary key-value data for background processing.
+ */
+export function createSilentNotification(data: Record<string, unknown>): NotificationPayload {
+  return createNotificationPayload('', '', { type: 'silent', ...data });
 }
 
 /** Handler called when a push notification is received. */

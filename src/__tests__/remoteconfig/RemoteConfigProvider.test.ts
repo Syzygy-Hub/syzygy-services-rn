@@ -145,3 +145,100 @@ describe('NetworkRemoteConfigProvider', () => {
     expect(provider.getString('absent')).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// NetworkRemoteConfigProvider — Cache TTL
+// ---------------------------------------------------------------------------
+
+describe('NetworkRemoteConfigProvider — cache TTL', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  function makeCountingClient(responseBody: Record<string, unknown>) {
+    let callCount = 0;
+    const client: import('syzygy-foundation-rn').NetworkClientProtocol = {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      execute: async (_req: import('syzygy-foundation-rn').NetworkRequest) => {
+        callCount++;
+        const data = new TextEncoder().encode(JSON.stringify(responseBody));
+        return {
+          statusCode: 200,
+          data,
+          headers: { 'content-type': 'application/json' },
+          isSuccess: true,
+          isClientError: false,
+          isServerError: false,
+        };
+      },
+    };
+    return { client, getCallCount: () => callCount };
+  }
+
+  it('second fetch within TTL returns cache without network call', async () => {
+    const { client, getCallCount } = makeCountingClient({ x: 1 });
+    const provider = new NetworkRemoteConfigProvider({
+      configUrl: 'https://example.com/config',
+      network: client,
+      cacheTtlSeconds: 60,
+    });
+
+    await provider.fetch();
+    await provider.fetch(); // should hit cache
+
+    expect(getCallCount()).toBe(1);
+  });
+
+  it('fetch after TTL expires makes a new network call', async () => {
+    const { client, getCallCount } = makeCountingClient({ x: 2 });
+    const provider = new NetworkRemoteConfigProvider({
+      configUrl: 'https://example.com/config',
+      network: client,
+      cacheTtlSeconds: 60,
+    });
+
+    await provider.fetch();
+    // Advance time past the TTL
+    jest.advanceTimersByTime(61 * 1000);
+    await provider.fetch();
+
+    expect(getCallCount()).toBe(2);
+  });
+
+  it('default TTL is 3600 seconds — cache valid for 1 hour', async () => {
+    const { client, getCallCount } = makeCountingClient({ y: 'hello' });
+    const provider = new NetworkRemoteConfigProvider({
+      configUrl: 'https://example.com/config',
+      network: client,
+      // no cacheTtlSeconds — should default to 3600
+    });
+
+    await provider.fetch();
+    // Advance 59 minutes — still within default TTL
+    jest.advanceTimersByTime(59 * 60 * 1000);
+    await provider.fetch();
+    expect(getCallCount()).toBe(1);
+
+    // Advance past 1 hour total
+    jest.advanceTimersByTime(2 * 60 * 1000);
+    await provider.fetch();
+    expect(getCallCount()).toBe(2);
+  });
+
+  it('updates lastFetchTime only on network fetch, not cached hits', async () => {
+    const { client } = makeCountingClient({ z: true });
+    const provider = new NetworkRemoteConfigProvider({
+      configUrl: 'https://example.com/config',
+      network: client,
+      cacheTtlSeconds: 300,
+    });
+
+    const before = Date.now();
+    await provider.fetch();
+    const firstFetchTime = provider.lastFetchTime!;
+    expect(firstFetchTime).toBeGreaterThanOrEqual(before);
+
+    jest.advanceTimersByTime(10_000);
+    await provider.fetch(); // cached — should NOT update lastFetchTime
+    expect(provider.lastFetchTime).toBe(firstFetchTime);
+  });
+});

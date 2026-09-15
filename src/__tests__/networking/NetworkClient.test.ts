@@ -1,7 +1,34 @@
 import { createNetworkRequest, SyzygyErrorCode } from 'syzygy-foundation-rn';
+import type { LoggerProtocol } from 'syzygy-foundation-rn';
 
 import { FetchNetworkClient, NetworkError } from '../../networking/NetworkClient';
 import type { RequestInterceptor } from '../../networking/NetworkClient';
+
+// ---------------------------------------------------------------------------
+// Minimal mock logger
+// ---------------------------------------------------------------------------
+
+function makeMockLogger(): LoggerProtocol & {
+  debugCalls: string[];
+  errorCalls: string[];
+} {
+  const debugCalls: string[] = [];
+  const errorCalls: string[] = [];
+  return {
+    debugCalls,
+    errorCalls,
+    log: jest.fn(),
+    debug: (msg: string) => {
+      debugCalls.push(msg);
+    },
+    info: jest.fn(),
+    warning: jest.fn(),
+    error: (msg: string) => {
+      errorCalls.push(msg);
+    },
+    critical: jest.fn(),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // fetch mock helpers
@@ -181,5 +208,80 @@ describe('FetchNetworkClient', () => {
     const client = new FetchNetworkClient({ maxRetries: 0 });
     const req = createNetworkRequest({ url: 'https://example.com', method: 'GET', headers: {} });
     await expect(client.execute(req)).rejects.toBeInstanceOf(NetworkError);
+  });
+
+  // -------------------------------------------------------------------------
+  // Logger tests
+  // -------------------------------------------------------------------------
+
+  it('logs request and response when logger is provided', async () => {
+    mockFetch(200, 'ok');
+    const logger = makeMockLogger();
+    const client = new FetchNetworkClient({ logger });
+    const req = createNetworkRequest({
+      url: 'https://example.com/data',
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    await client.execute(req);
+    expect(
+      logger.debugCalls.some((m) => m.includes('GET') && m.includes('https://example.com/data')),
+    ).toBe(true);
+    expect(logger.debugCalls.some((m) => m.includes('200'))).toBe(true);
+  });
+
+  it('excludes Authorization header from request log', async () => {
+    mockFetch(200, 'ok');
+    const logger = makeMockLogger();
+    const client = new FetchNetworkClient({ logger });
+    const req = createNetworkRequest({
+      url: 'https://example.com',
+      method: 'GET',
+      headers: { Authorization: 'Bearer secret-token', 'X-Custom': 'value' },
+    });
+    await client.execute(req);
+    // No logged message should mention 'Authorization' value
+    const allLogs = logger.debugCalls.join('\n');
+    expect(allLogs).not.toContain('secret-token');
+  });
+
+  it('logs error when request fails', async () => {
+    mockFetchFailure(new Error('Network failed'));
+    const logger = makeMockLogger();
+    const client = new FetchNetworkClient({ maxRetries: 0, logger });
+    const req = createNetworkRequest({ url: 'https://example.com', method: 'GET', headers: {} });
+    await expect(client.execute(req)).rejects.toBeInstanceOf(NetworkError);
+    expect(logger.errorCalls.length).toBeGreaterThan(0);
+  });
+
+  it('does not call logger when logger is undefined', async () => {
+    mockFetch(200, 'ok');
+    // No logger provided — should not throw, no side effects
+    const client = new FetchNetworkClient();
+    const req = createNetworkRequest({ url: 'https://example.com', method: 'GET', headers: {} });
+    await expect(client.execute(req)).resolves.toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // dispose() tests
+  // -------------------------------------------------------------------------
+
+  it('execute() throws NetworkError after dispose()', async () => {
+    const client = new FetchNetworkClient();
+    client.dispose();
+    const req = createNetworkRequest({ url: 'https://example.com', method: 'GET', headers: {} });
+    await expect(client.execute(req)).rejects.toBeInstanceOf(NetworkError);
+    await expect(client.execute(req)).rejects.toMatchObject({
+      message: 'NetworkClient has been disposed',
+    });
+  });
+
+  it('dispose() called multiple times is a safe no-op', () => {
+    const client = new FetchNetworkClient();
+    expect(() => {
+      client.dispose();
+      client.dispose();
+      client.dispose();
+    }).not.toThrow();
   });
 });

@@ -75,4 +75,32 @@ describe('InMemoryStorageProvider', () => {
     await p1.set('only-in-p1', key);
     expect(await p2.get(key)).toBeUndefined();
   });
+
+  it('get() throws TypeError when stored type mismatches requested type', async () => {
+    const provider = new InMemoryStorageProvider();
+    // Store a string value under identifier 'count'
+    const strKey = createStorageKey<string>('count');
+    await provider.set('not-a-number', strKey);
+    // Retrieve with a key that declares a number defaultValue — type hint is 'number'
+    const numKey = createStorageKey<number>('count', 0);
+    await expect(provider.get(numKey)).rejects.toThrow(TypeError);
+    await expect(provider.get(numKey)).rejects.toThrow(/key "count".*type "string".*type "number"/);
+  });
+
+  it('get() succeeds when stored type matches requested type', async () => {
+    const provider = new InMemoryStorageProvider();
+    const key = createStorageKey<number>('score', 0);
+    await provider.set(99, key);
+    await expect(provider.get(key)).resolves.toBe(99);
+  });
+
+  it('get() does not throw when key has no defaultValue (no type hint)', async () => {
+    // Without defaultValue there is no runtime type hint; the value passes through
+    const provider = new InMemoryStorageProvider();
+    const writeKey = createStorageKey<number>('x');
+    await provider.set(42, writeKey);
+    const readKey = createStorageKey<string>('x'); // no defaultValue
+    // No TypeError because there is no type hint to validate against
+    await expect(provider.get(readKey)).resolves.toBe(42);
+  });
 });
