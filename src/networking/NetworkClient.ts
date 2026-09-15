@@ -1,4 +1,9 @@
-import type { NetworkClientProtocol, NetworkRequest, NetworkResponse } from 'syzygy-foundation-rn';
+import type {
+  LoggerProtocol,
+  NetworkClientProtocol,
+  NetworkRequest,
+  NetworkResponse,
+} from 'syzygy-foundation-rn';
 import { SyzygyErrorCode, SyzygyErrorSeverity } from 'syzygy-foundation-rn';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +56,17 @@ export interface RequestInterceptor {
 // FetchNetworkClient
 // ---------------------------------------------------------------------------
 
+/**
+ * Injectable backoff clock for retry back-off.
+ *
+ * The default implementation uses `setTimeout`; in tests, pass a deterministic
+ * stub that records delays and resolves immediately — mirroring the
+ * injectable-clock pattern used in the Android `OkHttpNetworkClient`.
+ *
+ * @param ms  Milliseconds to sleep.
+ */
+export type BackoffClock = (ms: number) => Promise<void>;
+
 /** Configuration options for {@link FetchNetworkClient}. */
 export interface FetchNetworkClientOptions {
   /** Maximum number of automatic retries on server errors (5xx). Default: 3. */
@@ -59,6 +75,18 @@ export interface FetchNetworkClientOptions {
   retryBaseDelayMs?: number;
   /** Interceptors applied to every request before dispatch. */
   interceptors?: RequestInterceptor[];
+  /**
+   * Backoff clock used between retry attempts.  Defaults to a `setTimeout`-
+   * backed promise; inject a deterministic stub in tests to eliminate real
+   * timer waits and assert exact back-off values.
+   */
+  backoffClock?: BackoffClock;
+  /**
+   * Optional logger.  When provided, every request, response and error is
+   * logged via the supplied {@link LoggerProtocol}.  When `undefined` (the
+   * default), the logging path is never entered — zero overhead.
+   */
+  logger?: LoggerProtocol;
 }
 
 /**
@@ -75,11 +103,26 @@ export class FetchNetworkClient implements NetworkClientProtocol {
   private readonly maxRetries: number;
   private readonly retryBaseDelayMs: number;
   private readonly interceptors: RequestInterceptor[];
+  private readonly backoffClock: BackoffClock;
+  private readonly logger?: LoggerProtocol;
+  private _disposed = false;
 
   constructor(options: FetchNetworkClientOptions = {}) {
     this.maxRetries = options.maxRetries ?? 3;
     this.retryBaseDelayMs = options.retryBaseDelayMs ?? 200;
     this.interceptors = options.interceptors ?? [];
+    this.backoffClock = options.backoffClock ?? defaultBackoffClock;
+    this.logger = options.logger;
+  }
+
+  /**
+   * Releases this client.  After `dispose()` is called:
+   * - No further requests are accepted; `execute()` will throw a
+   *   {@link NetworkError} with code {@link SyzygyErrorCode.unknown}.
+   * - Calling `dispose()` more than once is a safe no-op.
+   */
+  dispose(): void {
+    this._disposed = true;
   }
 
   /**
@@ -89,20 +132,51 @@ export class FetchNetworkClient implements NetworkClientProtocol {
    * Each retry waits `retryBaseDelayMs * 2^attempt` milliseconds.
    *
    * @throws {@link NetworkError} on timeout, network failure, or unrecoverable HTTP error.
+   * @throws {@link NetworkError} (unknown) if the client has been disposed.
    */
   async execute(request: NetworkRequest): Promise<NetworkResponse> {
+    if (this._disposed) {
+      throw new NetworkError(
+        'NetworkClient has been disposed',
+        SyzygyErrorCode.unknown,
+        SyzygyErrorSeverity.Error,
+      );
+    }
     let intercepted = request;
     for (const interceptor of this.interceptors) {
       intercepted = await interceptor.intercept(intercepted);
     }
 
+    if (this.logger) {
+      const safeHeaders = Object.fromEntries(
+        Object.entries(intercepted.headers).filter(([k]) => k.toLowerCase() !== 'authorization'),
+      );
+      this.logger.debug(`[NetworkClient] --> ${intercepted.method} ${intercepted.url}`, {
+        method: intercepted.method,
+        url: intercepted.url,
+        headerKeys: Object.keys(safeHeaders).join(','),
+        bodySize: String(intercepted.body ? intercepted.body.byteLength : 0),
+      });
+    }
+
+    const startTime = Date.now();
     let lastError: NetworkError | undefined;
+
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) {
-        await delay(this.retryBaseDelayMs * Math.pow(2, attempt - 1));
+        await this.backoffClock(this.retryBaseDelayMs * Math.pow(2, attempt - 1));
       }
       try {
-        return await this._executeOnce(intercepted);
+        const response = await this._executeOnce(intercepted);
+        if (this.logger) {
+          const elapsed = Date.now() - startTime;
+          this.logger.debug(`[NetworkClient] <-- ${response.statusCode}`, {
+            statusCode: String(response.statusCode),
+            elapsedMs: String(elapsed),
+            bodySize: String(response.data.byteLength),
+          });
+        }
+        return response;
       } catch (err) {
         const netErr = err as NetworkError;
         // Retry only on server errors; propagate others immediately
@@ -110,8 +184,25 @@ export class FetchNetworkClient implements NetworkClientProtocol {
           lastError = netErr;
           continue;
         }
+        if (this.logger) {
+          const elapsed = Date.now() - startTime;
+          this.logger.error(
+            `[NetworkClient] ERROR ${intercepted.method} ${intercepted.url}`,
+            netErr,
+            { elapsedMs: String(elapsed) },
+          );
+        }
         throw err;
       }
+    }
+
+    if (this.logger && lastError) {
+      const elapsed = Date.now() - startTime;
+      this.logger.error(
+        `[NetworkClient] FAILED ${intercepted.method} ${intercepted.url}`,
+        lastError,
+        { elapsedMs: String(elapsed) },
+      );
     }
     throw lastError!;
   }
@@ -211,6 +302,6 @@ function buildResponse(
   };
 }
 
-function delay(ms: number): Promise<void> {
+function defaultBackoffClock(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

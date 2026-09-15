@@ -67,10 +67,12 @@ export class ConsoleAnalyticsProvider implements ExtendedAnalyticsProvider {
 
   /**
    * Tracks a Foundation {@link AnalyticsEvent}.
+   * The current session ID is injected into every event's properties.
    */
   track(event: AnalyticsEvent): void {
+    const enriched = { ...event, properties: { ...event.properties, sessionId: this._sessionId } };
     // eslint-disable-next-line no-console
-    console.log('[Analytics] track', event.name, event.properties, event.timestamp);
+    console.log('[Analytics] track', enriched.name, enriched.properties, enriched.timestamp);
   }
 
   /**
@@ -137,7 +139,8 @@ export class InMemoryAnalyticsProvider implements ExtendedAnalyticsProvider {
   private _sessionId: string = generateUUID();
 
   track(event: AnalyticsEvent): void {
-    this.events.push(event);
+    const enriched = { ...event, properties: { ...event.properties, sessionId: this._sessionId } };
+    this.events.push(enriched);
   }
 
   identify(userId: string, traits: Record<string, unknown>): void {

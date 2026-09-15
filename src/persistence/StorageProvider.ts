@@ -24,7 +24,27 @@ export class InMemoryStorageProvider implements StorageProvider {
   async get<T>(key: StorageKey<T>): Promise<T | undefined> {
     const raw = this.store.get(key.identifier);
     if (raw === undefined) return key.defaultValue;
-    return JSON.parse(raw) as T;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new TypeError(
+        `StorageProvider: key "${key.identifier}" contains malformed JSON and cannot be deserialized`,
+      );
+    }
+
+    if (key.defaultValue !== undefined) {
+      const expectedType = typeof key.defaultValue;
+      const actualType = typeof parsed;
+      if (actualType !== expectedType) {
+        throw new TypeError(
+          `StorageProvider: key "${key.identifier}" stores a value of type "${actualType}" but type "${expectedType}" was requested`,
+        );
+      }
+    }
+
+    return parsed as T;
   }
 
   /**

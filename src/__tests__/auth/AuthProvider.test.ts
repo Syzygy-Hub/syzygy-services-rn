@@ -131,12 +131,164 @@ describe('JWTAuthProvider', () => {
     await expect(provider.refresh()).rejects.toBeInstanceOf(AuthError);
   });
 
+  it('canUseBiometric() returns false', async () => {
+    const storage = new InMemoryStorageProvider();
+    const provider = new JWTAuthProvider({ storage });
+    expect(await provider.canUseBiometric()).toBe(false);
+  });
+
+  it('authenticateWithBiometric() returns unauthenticated state', async () => {
+    const storage = new InMemoryStorageProvider();
+    const provider = new JWTAuthProvider({ storage });
+    const result = await provider.authenticateWithBiometric('Verify identity');
+    expect(result.kind).toBe('unauthenticated');
+  });
+
   it('AuthState helpers work correctly', () => {
     const token = makeToken();
     expect(AuthState.isAuthenticated(AuthState.authenticated(token))).toBe(true);
     expect(AuthState.isAuthenticated(AuthState.unauthenticated())).toBe(false);
     expect(AuthState.token(AuthState.authenticated(token))).toEqual(token);
     expect(AuthState.token(AuthState.unauthenticated())).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real token-refresh flow (network-wired)
+// ---------------------------------------------------------------------------
+
+describe('JWTAuthProvider — real token-refresh flow', () => {
+  function makeNetworkClient(responseBody: Record<string, unknown>, statusCode = 200) {
+    return {
+      execute: jest.fn().mockResolvedValue({
+        statusCode,
+        data: new TextEncoder().encode(JSON.stringify(responseBody)),
+        headers: { 'content-type': 'application/json' },
+        isSuccess: statusCode >= 200 && statusCode < 300,
+        isClientError: statusCode >= 400 && statusCode < 500,
+        isServerError: statusCode >= 500,
+      }),
+    };
+  }
+
+  it('refresh calls the network with the refresh token', async () => {
+    const storage = new InMemoryStorageProvider();
+    const network = makeNetworkClient({ accessToken: 'new-access', refreshToken: 'new-refresh' });
+    const provider = new JWTAuthProvider({
+      storage,
+      network,
+      refreshUrl: 'https://api.example.com/auth/refresh',
+    });
+    provider.authenticate(makeToken({ refreshToken: 'old-refresh' }));
+
+    await provider.refresh();
+
+    expect(network.execute).toHaveBeenCalledTimes(1);
+    const req = (network.execute as jest.Mock).mock.calls[0][0] as {
+      url: string;
+      body: Uint8Array;
+    };
+    expect(req.url).toBe('https://api.example.com/auth/refresh');
+    const body = JSON.parse(new TextDecoder().decode(req.body)) as { refreshToken: string };
+    expect(body.refreshToken).toBe('old-refresh');
+  });
+
+  it('refresh returns new AuthToken with updated accessToken', async () => {
+    const storage = new InMemoryStorageProvider();
+    const network = makeNetworkClient({ accessToken: 'brand-new-access', expiresIn: 3600 });
+    const provider = new JWTAuthProvider({
+      storage,
+      network,
+      refreshUrl: 'https://api.example.com/auth/refresh',
+    });
+    provider.authenticate(makeToken());
+
+    const newToken = await provider.refresh();
+
+    expect(newToken.accessToken).toBe('brand-new-access');
+    expect(newToken.expiresAt).toBeDefined();
+  });
+
+  it('refresh result is persisted to StorageProvider', async () => {
+    const storage = new InMemoryStorageProvider();
+    const network = makeNetworkClient({
+      accessToken: 'persisted-new',
+      refreshToken: 'persisted-rt',
+    });
+    const provider = new JWTAuthProvider({
+      storage,
+      network,
+      refreshUrl: 'https://api.example.com/auth/refresh',
+    });
+    provider.authenticate(makeToken());
+
+    await provider.refresh();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const stored = await storage.get({ identifier: 'syzygy.auth.accessToken' });
+    expect(stored).toBe('persisted-new');
+    const storedRt = await storage.get({ identifier: 'syzygy.auth.refreshToken' });
+    expect(storedRt).toBe('persisted-rt');
+  });
+
+  it('refresh transitions to authenticated after success', async () => {
+    const storage = new InMemoryStorageProvider();
+    const network = makeNetworkClient({ accessToken: 'refreshed-access' });
+    const provider = new JWTAuthProvider({
+      storage,
+      network,
+      refreshUrl: 'https://api.example.com/auth/refresh',
+    });
+    provider.authenticate(makeToken());
+    const states: string[] = [];
+    provider.subscribe((s) => states.push(s.kind));
+
+    await provider.refresh();
+
+    expect(provider.state.kind).toBe('authenticated');
+    // refreshing → authenticated
+    expect(states).toContain('refreshing');
+    expect(states[states.length - 1]).toBe('authenticated');
+  });
+
+  it('refresh failure clears tokens and emits unauthenticated', async () => {
+    const storage = new InMemoryStorageProvider();
+    const network = { execute: jest.fn().mockRejectedValue(new Error('network error')) };
+    const provider = new JWTAuthProvider({
+      storage,
+      network,
+      refreshUrl: 'https://api.example.com/auth/refresh',
+    });
+    provider.authenticate(makeToken());
+    await new Promise((r) => setTimeout(r, 0)); // let persist complete
+
+    await expect(provider.refresh()).rejects.toBeInstanceOf(AuthError);
+
+    expect(provider.state.kind).toBe('unauthenticated');
+    await new Promise((r) => setTimeout(r, 0));
+    const stored = await storage.get({ identifier: 'syzygy.auth.accessToken' });
+    expect(stored).toBeUndefined();
+  });
+
+  it('auto-refresh: restore() on expired JWT detects exp claim', async () => {
+    // Build a real JWT with exp in the past
+    function buildJwtWithExp(expSec: number): string {
+      const header = Buffer.from(JSON.stringify({ alg: 'HS256' })).toString('base64url');
+      const payload = Buffer.from(JSON.stringify({ exp: expSec })).toString('base64url');
+      return `${header}.${payload}.sig`;
+    }
+
+    const expiredAccessToken = buildJwtWithExp(Math.floor(Date.now() / 1000) - 100);
+    const storage = new InMemoryStorageProvider();
+    // Manually seed storage with expired token (no explicit expiresAt)
+    await storage.set(expiredAccessToken, { identifier: 'syzygy.auth.accessToken' });
+    await storage.set('rt-xyz', { identifier: 'syzygy.auth.refreshToken' });
+
+    const provider = new JWTAuthProvider({ storage });
+    await provider.restore();
+
+    // Should detect the token is expired via JWT exp claim
+    expect(provider.state.kind).toBe('expired');
   });
 });
 

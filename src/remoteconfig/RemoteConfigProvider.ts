@@ -56,6 +56,11 @@ export interface NetworkRemoteConfigProviderOptions {
   network: NetworkClientProtocol;
   /** Default values used when a key is absent from the remote config. */
   defaults?: Record<string, unknown>;
+  /**
+   * How long (in seconds) the cached config is considered fresh before a new
+   * network fetch is required.  Default: 3600 (one hour).
+   */
+  cacheTtlSeconds?: number;
 }
 
 /**
@@ -71,6 +76,7 @@ export class NetworkRemoteConfigProvider implements RemoteConfigProvider {
   private readonly configUrl: string;
   private readonly network: NetworkClientProtocol;
   private readonly defaults: Record<string, unknown>;
+  private readonly cacheTtlMs: number;
   private cache: Record<string, unknown> = {};
   private _lastFetchTime: number | undefined;
 
@@ -78,13 +84,21 @@ export class NetworkRemoteConfigProvider implements RemoteConfigProvider {
     this.configUrl = options.configUrl;
     this.network = options.network;
     this.defaults = options.defaults ?? {};
+    this.cacheTtlMs = (options.cacheTtlSeconds ?? 3600) * 1000;
   }
 
   /**
    * Fetches the remote config JSON and merges it into the local cache.
+   * Returns the cached result immediately when a successful fetch was
+   * performed within the configured `cacheTtlSeconds` window.
    * Defaults are applied beneath any remote value so that remote always wins.
    */
   async fetch(): Promise<void> {
+    if (this._lastFetchTime !== undefined && Date.now() - this._lastFetchTime < this.cacheTtlMs) {
+      // Cache is still fresh — skip the network call
+      return;
+    }
+
     const request = createNetworkRequest({
       url: this.configUrl,
       method: 'GET',
