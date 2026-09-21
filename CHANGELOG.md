@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-19
+
+### Fixed
+- `DeviceProvider`: concurrent `getDeviceId()` calls now share one UUID generation via single-flight Promise memoization
+
+### Changed
+- npm publish gated behind lint + typecheck + test in release.yml
+- `StorageProvider.set(value, key)` argument order documented — Foundation v1.2.0 TODO noted
+- Canonical backoff policy: 500ms base, 2.0× multiplier, full jitter, 8 000ms cap, max 3 retries
+- Foundation dependency updated to ^1.2.0
+
 ## [1.1.0] - 2026-09-13
 
 ### Added
@@ -57,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CrashReporter interface and console crash logging stub
 - WebSocketProvider interface and native WebSocket implementation stub
 
-[Unreleased]: https://github.com/Syzygy-Hub/syzygy-services-rn/compare/1.1.0...HEAD
+[Unreleased]: https://github.com/Syzygy-Hub/syzygy-services-rn/compare/1.2.0...HEAD
+[1.2.0]: https://github.com/Syzygy-Hub/syzygy-services-rn/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/Syzygy-Hub/syzygy-services-rn/compare/1.0.0...1.1.0
 [1.0.0]: https://github.com/Syzygy-Hub/syzygy-services-rn/releases/tag/1.0.0

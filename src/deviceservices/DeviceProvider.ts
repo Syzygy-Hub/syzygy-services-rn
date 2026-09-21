@@ -77,6 +77,7 @@ export class NodeDeviceProvider implements DeviceProvider {
   private readonly _appVersion: string;
   private readonly _isSimulator: boolean;
   private _cachedDeviceId: string | undefined;
+  private _pendingId: Promise<string> | null = null;
 
   constructor(options: NodeDeviceProviderOptions) {
     this.storage = options.storage;
@@ -92,7 +93,14 @@ export class NodeDeviceProvider implements DeviceProvider {
     if (this._cachedDeviceId !== undefined) {
       return Promise.resolve(this._cachedDeviceId);
     }
-    return this._loadOrCreateDeviceId();
+    // Return existing in-flight promise to prevent concurrent callers from
+    // each generating their own UUID before the first write completes.
+    if (this._pendingId) return this._pendingId;
+
+    this._pendingId = this._loadOrCreateDeviceId().finally(() => {
+      this._pendingId = null;
+    });
+    return this._pendingId;
   }
 
   /** Always `'rn'`. */
