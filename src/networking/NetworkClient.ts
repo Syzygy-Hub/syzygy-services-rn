@@ -67,12 +67,28 @@ export interface RequestInterceptor {
  */
 export type BackoffClock = (ms: number) => Promise<void>;
 
+// ---------------------------------------------------------------------------
+// Canonical backoff policy (all 4 platforms must match)
+// delay = random(0, min(cap, base * multiplier^attempt))
+// ---------------------------------------------------------------------------
+
+/** Base delay in milliseconds for exponential back-off. */
+export const BACKOFF_BASE_MS = 500;
+/** Multiplier applied to the base delay on each successive attempt. */
+export const BACKOFF_MULTIPLIER = 2.0;
+/** Maximum delay cap in milliseconds for any single back-off sleep. */
+export const BACKOFF_CAP_MS = 8000;
+/** Maximum number of retry attempts before giving up. */
+export const MAX_RETRY_ATTEMPTS = 3;
+
 /** Configuration options for {@link FetchNetworkClient}. */
 export interface FetchNetworkClientOptions {
-  /** Maximum number of automatic retries on server errors (5xx). Default: 3. */
+  /** Maximum number of automatic retries on server errors (5xx). Default: {@link MAX_RETRY_ATTEMPTS}. */
   maxRetries?: number;
-  /** Base delay (ms) for exponential back-off. Default: 200. */
+  /** Base delay (ms) for exponential back-off. Default: {@link BACKOFF_BASE_MS}. */
   retryBaseDelayMs?: number;
+  /** Cap (ms) for exponential back-off. Default: {@link BACKOFF_CAP_MS}. */
+  retryCapMs?: number;
   /** Interceptors applied to every request before dispatch. */
   interceptors?: RequestInterceptor[];
   /**
@@ -102,14 +118,16 @@ export interface FetchNetworkClientOptions {
 export class FetchNetworkClient implements NetworkClientProtocol {
   private readonly maxRetries: number;
   private readonly retryBaseDelayMs: number;
+  private readonly retryCapMs: number;
   private readonly interceptors: RequestInterceptor[];
   private readonly backoffClock: BackoffClock;
   private readonly logger?: LoggerProtocol;
   private _disposed = false;
 
   constructor(options: FetchNetworkClientOptions = {}) {
-    this.maxRetries = options.maxRetries ?? 3;
-    this.retryBaseDelayMs = options.retryBaseDelayMs ?? 200;
+    this.maxRetries = options.maxRetries ?? MAX_RETRY_ATTEMPTS;
+    this.retryBaseDelayMs = options.retryBaseDelayMs ?? BACKOFF_BASE_MS;
+    this.retryCapMs = options.retryCapMs ?? BACKOFF_CAP_MS;
     this.interceptors = options.interceptors ?? [];
     this.backoffClock = options.backoffClock ?? defaultBackoffClock;
     this.logger = options.logger;
@@ -164,7 +182,11 @@ export class FetchNetworkClient implements NetworkClientProtocol {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) {
-        await this.backoffClock(this.retryBaseDelayMs * Math.pow(2, attempt - 1));
+        const cap = Math.min(
+          this.retryCapMs,
+          this.retryBaseDelayMs * Math.pow(BACKOFF_MULTIPLIER, attempt - 1),
+        );
+        await this.backoffClock(Math.random() * cap);
       }
       try {
         const response = await this._executeOnce(intercepted);

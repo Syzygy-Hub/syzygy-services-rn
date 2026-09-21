@@ -103,4 +103,14 @@ describe('InMemoryStorageProvider', () => {
     // No TypeError because there is no type hint to validate against
     await expect(provider.get(readKey)).resolves.toBe(42);
   });
+
+  it('concurrent reads and writes do not throw', async () => {
+    const provider = new InMemoryStorageProvider();
+    const key = createStorageKey<string>('concurrent.key');
+    const ops = [
+      ...Array.from({ length: 5 }, () => provider.set('value', key)),
+      ...Array.from({ length: 5 }, () => provider.get(key)),
+    ];
+    await expect(Promise.all(ops)).resolves.toBeDefined();
+  });
 });

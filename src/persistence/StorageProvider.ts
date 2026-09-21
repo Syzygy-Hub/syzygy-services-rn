@@ -50,6 +50,10 @@ export class InMemoryStorageProvider implements StorageProvider {
   /**
    * Serialises `value` as JSON and persists it under `key`.
    *
+   * @param value - The value to store (NOTE: value comes before key —
+   *   this matches the Foundation contract. See Foundation v1.2.0
+   *   for potential API alignment.)
+   * @param key - The storage key
    * @typeParam T  The value type.
    */
   async set<T>(value: T, key: StorageKey<T>): Promise<void> {

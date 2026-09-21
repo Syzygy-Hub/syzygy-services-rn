@@ -72,4 +72,11 @@ describe('NodeDeviceProvider', () => {
     const [id1, id2] = await Promise.all([p1.deviceId, p2.deviceId]);
     expect(id1).not.toBe(id2);
   });
+
+  it('concurrent getDeviceId calls all return same UUID', async () => {
+    const storage = new InMemoryStorageProvider();
+    const provider = new NodeDeviceProvider({ storage });
+    const results = await Promise.all(Array.from({ length: 10 }, () => provider.deviceId));
+    expect(new Set(results).size).toBe(1);
+  });
 });
