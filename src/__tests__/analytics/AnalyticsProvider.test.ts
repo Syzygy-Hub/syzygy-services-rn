@@ -127,4 +127,14 @@ describe('ConsoleAnalyticsProvider', () => {
     provider.reset();
     expect(provider.sessionId).not.toBe(s1);
   });
+
+  it('setUserProperties() calls through to identify by merging into userProperties', () => {
+    const provider = new ConsoleAnalyticsProvider();
+    provider.identify('user-7', { plan: 'pro' });
+    provider.setUserProperties({ role: 'admin', plan: 'enterprise' });
+    expect(provider.userProperties.role).toBe('admin');
+    expect(provider.userProperties.plan).toBe('enterprise');
+    // userId set by identify should still be present
+    expect(provider.userProperties.userId).toBe('user-7');
+  });
 });

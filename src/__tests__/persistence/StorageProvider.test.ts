@@ -104,6 +104,29 @@ describe('InMemoryStorageProvider', () => {
     await expect(provider.get(readKey)).resolves.toBe(42);
   });
 
+  it('get() throws on malformed JSON string', async () => {
+    const provider = new InMemoryStorageProvider();
+    // Directly inject malformed JSON by setting a raw string via a valid key then
+    // bypassing serialization by using the internal store indirectly.
+    // We use set() with a valid value first, then overwrite via another set that
+    // produces invalid JSON by storing through a known trick: set a string key
+    // whose identifier matches but store raw via the backing string key.
+    // Simplest approach: use the string key to store a value that is NOT valid JSON
+    // by exploiting the fact that set() serializes with JSON.stringify, so we can't
+    // inject malformed JSON through the public API. Instead, use a numeric key and
+    // store a string that would be valid JSON but corrupt the internal store directly
+    // by calling set on the same identifier through a different typed key, resulting
+    // in the stored JSON being of mismatched type — but to test the JSON.parse path
+    // specifically, we need to inject a raw invalid string.
+    // The cleanest way: access the private store via a cast.
+    const store = (provider as unknown as { store: Map<string, string> }).store;
+    store.set('malformed.key', '{not valid json');
+
+    const key = createStorageKey<string>('malformed.key');
+    await expect(provider.get(key)).rejects.toThrow(TypeError);
+    await expect(provider.get(key)).rejects.toThrow(/malformed JSON/);
+  });
+
   it('concurrent reads and writes do not throw', async () => {
     const provider = new InMemoryStorageProvider();
     const key = createStorageKey<string>('concurrent.key');

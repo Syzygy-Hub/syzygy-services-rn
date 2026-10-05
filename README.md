@@ -1,4 +1,4 @@
-[![React Native](https://img.shields.io/badge/React%20Native-TypeScript-61DAFB?style=flat)](https://reactnative.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-3178C6?logo=typescript&logoColor=white&style=flat)](https://www.typescriptlang.org) [![CI](https://img.shields.io/github/actions/workflow/status/Syzygy-Hub/syzygy-services-rn/ci.yml?label=ci&style=flat)](https://github.com/Syzygy-Hub/syzygy-services-rn/actions/workflows/ci.yml) [![Version](https://img.shields.io/badge/version-1.2.0-D85A30?style=flat)](https://github.com/Syzygy-Hub/syzygy-services-rn/releases) [![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
+[![React Native](https://img.shields.io/badge/React%20Native-TypeScript-61DAFB?style=flat)](https://reactnative.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-3178C6?logo=typescript&logoColor=white&style=flat)](https://www.typescriptlang.org) [![CI](https://img.shields.io/github/actions/workflow/status/Syzygy-Hub/syzygy-services-rn/ci.yml?label=ci&style=flat)](https://github.com/Syzygy-Hub/syzygy-services-rn/actions/workflows/ci.yml) [![Version](https://img.shields.io/badge/version-3.0.0-D85A30?style=flat)](https://github.com/Syzygy-Hub/syzygy-services-rn/releases) [![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Syzygy-Hub/.github/main/brand/assets/banners/syzygy-banner-dark-1200.png">
@@ -38,7 +38,7 @@ npm install syzygy-services-rn
 
 ## Dependencies
 
-- `syzygy-foundation-rn` ^1.2.0
+- `syzygy-foundation-rn` ^3.0.0
 
 ## Ecosystem
 

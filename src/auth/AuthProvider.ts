@@ -182,20 +182,35 @@ export class JWTAuthProvider implements AuthProvider {
    * Returns whether biometric authentication is available on this device.
    * Always returns false in the stub. Wire to react-native-biometrics or expo-local-authentication
    * for real Face ID / Touch ID / fingerprint support.
+   * TODO(Foundation-future): replace with real platform biometric check
    */
-  async canUseBiometric(): Promise<boolean> {
+  canUseBiometric(): boolean {
     return false;
   }
 
   /**
    * Authenticates the user with biometrics.
    * @param _reason - The reason shown to the user in the system prompt.
-   * @returns The resulting AuthState — 'authenticated' if successful, 'unauthenticated' otherwise.
-   * Stub always returns unauthenticated. Wire to react-native-biometrics for real usage.
+   * @returns Promise resolving to true on success, false on failure or cancellation.
+   * Stub always returns false. Wire to react-native-biometrics for real usage.
+   * TODO(Foundation-future): replace with real platform biometric prompt
    */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async authenticateWithBiometric(_reason: string): Promise<AuthState> {
-    return AuthState.unauthenticated();
+  async authenticateWithBiometric(_reason: string): Promise<boolean> {
+    return false;
+  }
+
+  /**
+   * Attempts to refresh the current auth token.
+   * @returns Promise resolving to true on success, false on failure.
+   */
+  async refreshToken(): Promise<boolean> {
+    try {
+      await this.refresh();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

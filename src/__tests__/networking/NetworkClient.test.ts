@@ -284,4 +284,22 @@ describe('FetchNetworkClient', () => {
       client.dispose();
     }).not.toThrow();
   });
+
+  it('returns NetworkError with code forbidden on 403 response', async () => {
+    mockFetch(403, 'Forbidden');
+    const client = new FetchNetworkClient({ maxRetries: 0 });
+    const req = createNetworkRequest({ url: 'https://example.com', method: 'GET', headers: {} });
+    await expect(client.execute(req)).rejects.toMatchObject({
+      code: SyzygyErrorCode.forbidden,
+    });
+  });
+
+  it('returns NetworkError with code notFound on 404 response', async () => {
+    mockFetch(404, 'Not Found');
+    const client = new FetchNetworkClient({ maxRetries: 0 });
+    const req = createNetworkRequest({ url: 'https://example.com', method: 'GET', headers: {} });
+    await expect(client.execute(req)).rejects.toMatchObject({
+      code: SyzygyErrorCode.notFound,
+    });
+  });
 });
