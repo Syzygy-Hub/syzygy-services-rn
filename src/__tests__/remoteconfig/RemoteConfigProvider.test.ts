@@ -86,6 +86,7 @@ function makeNetworkClient(responseBody: Record<string, unknown>): NetworkClient
         isServerError: false,
       };
     },
+    dispose: () => undefined,
   };
 }
 
@@ -144,6 +145,22 @@ describe('NetworkRemoteConfigProvider', () => {
     await provider.fetch();
     expect(provider.getString('absent')).toBeUndefined();
   });
+
+  it('fetch() handles network throw gracefully', async () => {
+    const throwingNetwork: import('syzygy-foundation-rn').NetworkClientProtocol = {
+      execute: jest.fn().mockRejectedValue(new Error('Network unreachable')),
+      dispose: jest.fn(),
+    };
+    const provider = new NetworkRemoteConfigProvider({
+      configUrl: 'https://example.com/config',
+      network: throwingNetwork,
+      defaults: { fallbackKey: 'fallbackValue' },
+    });
+
+    await expect(provider.fetch()).rejects.toThrow('Network unreachable');
+    // Defaults should still be accessible after a failed fetch
+    expect(provider.getString('fallbackKey')).toBe('fallbackValue');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -170,6 +187,7 @@ describe('NetworkRemoteConfigProvider — cache TTL', () => {
           isServerError: false,
         };
       },
+      dispose: () => undefined,
     };
     return { client, getCallCount: () => callCount };
   }

@@ -289,6 +289,7 @@ describe('ContractCompliance — RemoteConfigProvider', () => {
   it('NetworkRemoteConfigProvider can be instantiated with required options', () => {
     const mockNetwork: NetworkClientProtocol = {
       execute: jest.fn(),
+      dispose: jest.fn(),
     };
     const provider = new NetworkRemoteConfigProvider({
       configUrl: 'https://example.com/config',

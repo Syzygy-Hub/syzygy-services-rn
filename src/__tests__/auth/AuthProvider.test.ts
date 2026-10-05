@@ -131,17 +131,17 @@ describe('JWTAuthProvider', () => {
     await expect(provider.refresh()).rejects.toBeInstanceOf(AuthError);
   });
 
-  it('canUseBiometric() returns false', async () => {
+  it('canUseBiometric() returns false', () => {
     const storage = new InMemoryStorageProvider();
     const provider = new JWTAuthProvider({ storage });
-    expect(await provider.canUseBiometric()).toBe(false);
+    expect(provider.canUseBiometric()).toBe(false);
   });
 
-  it('authenticateWithBiometric() returns unauthenticated state', async () => {
+  it('authenticateWithBiometric() returns false (stub)', async () => {
     const storage = new InMemoryStorageProvider();
     const provider = new JWTAuthProvider({ storage });
     const result = await provider.authenticateWithBiometric('Verify identity');
-    expect(result.kind).toBe('unauthenticated');
+    expect(result).toBe(false);
   });
 
   it('AuthState helpers work correctly', () => {
@@ -168,6 +168,7 @@ describe('JWTAuthProvider — real token-refresh flow', () => {
         isClientError: statusCode >= 400 && statusCode < 500,
         isServerError: statusCode >= 500,
       }),
+      dispose: jest.fn(),
     };
   }
 
@@ -251,9 +252,29 @@ describe('JWTAuthProvider — real token-refresh flow', () => {
     expect(states[states.length - 1]).toBe('authenticated');
   });
 
+  it('refresh() rejects with AuthError when server returns 4xx/5xx response body', async () => {
+    const storage = new InMemoryStorageProvider();
+    const network = {
+      execute: jest.fn().mockRejectedValue(new Error('403 Forbidden')),
+      dispose: jest.fn(),
+    };
+    const provider = new JWTAuthProvider({
+      storage,
+      network,
+      refreshUrl: 'https://api.example.com/auth/refresh',
+    });
+    provider.authenticate(makeToken({ refreshToken: 'rt-xyz' }));
+
+    await expect(provider.refresh()).rejects.toBeInstanceOf(AuthError);
+    expect(provider.state.kind).toBe('unauthenticated');
+  });
+
   it('refresh failure clears tokens and emits unauthenticated', async () => {
     const storage = new InMemoryStorageProvider();
-    const network = { execute: jest.fn().mockRejectedValue(new Error('network error')) };
+    const network = {
+      execute: jest.fn().mockRejectedValue(new Error('network error')),
+      dispose: jest.fn(),
+    };
     const provider = new JWTAuthProvider({
       storage,
       network,
